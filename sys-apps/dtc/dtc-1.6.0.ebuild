@@ -1,8 +1,10 @@
-# Copyright 1999-2021 Gentoo Authors
+# Copyright 1999-2022 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 EAPI=7
-inherit multilib toolchain-funcs
+
+PYTHON_COMPAT=( python3_{7..10} )
+inherit python-r1 multilib toolchain-funcs
 
 if [[ ${PV} == "9999" ]] ; then
 	EGIT_REPO_URI="git://git.kernel.org/pub/scm/utils/dtc/dtc.git"
@@ -17,7 +19,7 @@ HOMEPAGE="https://devicetree.org/ https://git.kernel.org/cgit/utils/dtc/dtc.git/
 
 LICENSE="GPL-2"
 SLOT="0"
-IUSE="static-libs yaml"
+IUSE="python static-libs yaml"
 
 BDEPEND="
 	sys-devel/bison
@@ -36,7 +38,7 @@ DOCS="
 _emake() {
 	# valgrind is used only in 'make checkm'
 	emake \
-		NO_PYTHON=1 \
+		NO_PYTHON=$(usex !python 1 0) \
 		NO_VALGRIND=1 \
 		NO_YAML=$(usex !yaml 1 0) \
 		\
@@ -55,6 +57,15 @@ _emake() {
 
 src_prepare() {
 	default
+
+	pkgconfig_fix() {
+		#TODO find better solution
+		PKGCONF_PYTHON=$(echo $EPYTHON | sed 's,python,python-,')
+		sed -i "s,--cflags \$(PYTHON),--cflags $PKGCONF_PYTHON," Makefile
+	}
+	python_foreach_impl pkgconfig_fix
+
+	sed -i 's,--prefix=$(PREFIX),--prefix=$(DESTDIR)/$(PREFIX),' pylibfdt/Makefile.pylibfdt
 
 	sed -i \
 		-e '/^CFLAGS =/s:=:+=:' \
@@ -78,4 +89,11 @@ src_install() {
 	_emake DESTDIR="${D}" install
 
 	use static-libs || find "${ED}" -name '*.a' -delete
+
+	installpy() {
+		python_domodule pylibfdt/libfdt.py
+		python_domodule pylibfdt/_libfdt.*so
+		python_optimize
+	}
+	use python && python_foreach_impl installpy
 }
